@@ -3,6 +3,7 @@ import pickle
 import pandas as pd
 import requests
 from datetime import datetime
+import os
 
 # ==================== CONFIG ====================
 st.set_page_config(
@@ -12,12 +13,43 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# Get API key from environment variable
+API_KEY = os.environ.get("TMDB_API_KEY", "8265bd1679663a7ea12ac168da84d2e8")  # Fallback to public key
+
+# ==================== DOWNLOAD PICKLE FILES FROM HUGGINGFACE ====================
+@st.cache_data
+def download_pickle_files():
+    """Download pickle files from HuggingFace if not present locally"""
+    
+    files_to_download = {
+        'movies_dict.pkl': 'https://huggingface.co/datasets/aayush369/Cine-suggest/resolve/main/movies_dict.pkl',
+        'similarity.pkl': 'https://huggingface.co/datasets/aayush369/Cine-suggest/resolve/main/similarity.pkl'
+    }
+    
+    for filename, url in files_to_download.items():
+        if not os.path.exists(filename):
+            try:
+                st.info(f"📥 Downloading {filename} from HuggingFace... (this may take a minute)")
+                response = requests.get(url, stream=True, timeout=120)
+                response.raise_for_status()
+                
+                with open(filename, 'wb') as f:
+                    for chunk in response.iter_content(chunk_size=8192):
+                        f.write(chunk)
+                
+                st.success(f"✅ {filename} downloaded successfully!")
+            except Exception as e:
+                st.error(f"❌ Failed to download {filename}: {str(e)}")
+                st.stop()
+
+# Download files on first run
+download_pickle_files()
+
 # ==================== LOAD DATA ====================
 @st.cache_data
 def load_data():
     """Load pickled data (cached for performance)"""
     try:
-        # Try loading with different protocols
         with open('movies_dict.pkl', 'rb') as f:
             movies_dict = pickle.load(f)
         movies = pd.DataFrame(movies_dict)
@@ -28,7 +60,7 @@ def load_data():
         return movies, similarity
     except (FileNotFoundError, pickle.UnpicklingError) as e:
         st.error(f"❌ Error loading data files: {str(e)}")
-        st.info("💡 Try regenerating pickle files from your Jupyter notebook")
+        st.info("💡 Data files are being downloaded from HuggingFace")
         st.stop()
     except Exception as e:
         st.error(f"❌ Unexpected error: {str(e)}")
@@ -40,7 +72,7 @@ movies, similarity = load_data()
 def fetch_poster(movie_id):
     """Fetch movie poster from TMDB API"""
     try:
-        url = f"https://api.themoviedb.org/3/movie/{movie_id}?api_key=8265bd1679663a7ea12ac168da84d2e8&language=en-US"
+        url = f"https://api.themoviedb.org/3/movie/{movie_id}?api_key={API_KEY}&language=en-US"
         response = requests.get(url, timeout=5)
         data = response.json()
         poster_path = data.get('poster_path')
@@ -53,7 +85,7 @@ def fetch_poster(movie_id):
 def fetch_movie_details(movie_id):
     """Fetch additional movie details from TMDB"""
     try:
-        url = f"https://api.themoviedb.org/3/movie/{movie_id}?api_key=8265bd1679663a7ea12ac168da84d2e8&language=en-US"
+        url = f"https://api.themoviedb.org/3/movie/{movie_id}?api_key={API_KEY}&language=en-US"
         response = requests.get(url, timeout=5)
         data = response.json()
         return {
@@ -143,7 +175,6 @@ def get_available_genres():
 def filter_movies_by_genre(genre):
     """Filter movies by selected genre"""
     title_col = 'title_x' if 'title_x' in movies.columns else 'title'
-    # For now, return all movies (you can add actual genre filtering later)
     return movies[title_col].values
 
 # ==================== ANALYTICS ====================
@@ -351,7 +382,7 @@ def main():
         """
         <div style='text-align: center; color: gray;'>
             <p>Made with ❤️ by Aayush Kumar | 
-            <a href='https://github.com/aayush0444/Movie-Recommendation-System' target='_blank'>GitHub</a> | 
+            <a href='https://github.com/aayush0444/cine-suggest' target='_blank'>GitHub</a> | 
             Powered by TMDB API</p>
         </div>
         """,
